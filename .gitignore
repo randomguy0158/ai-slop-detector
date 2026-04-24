@@ -1,0 +1,17 @@
+.venv/
+
+venv/
+__pycache__/
+*.pyc
+.env
+*.pkl
+training_data_with_features.csv
+[200~ai_slop_data.csv
+
+ai_slop_data.csv
+
+training_data.csv
+
+clean_data.csv
+
+*.log

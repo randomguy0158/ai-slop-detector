@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slop Shield — AI Content Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #00ff88;
+    --accent2: #ff3366;
+    --accent3: #7c3aed;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --clean: #00ff88;
+    --uncertain: #ffaa00;
+    --flagged: #ff3366;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glowing orb */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -20%;
+    right: -10%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: pulse 8s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.7; }
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    padding: 48px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+    position: relative;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-icon {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 0 20px rgba(0,255,136,0.3);
+  }
+
+  .logo-text {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-text span {
+    color: var(--accent);
+  }
+
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 4px;
+    letter-spacing: 1px;
+    animation: blink 3s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 90%, 100% { opacity: 1; }
+    95% { opacity: 0.3; }
+  }
+
+  /* Hero */
+  .hero {
+    margin-bottom: 48px;
+    animation: fadeUp 0.6s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero h1 {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 16px;
+  }
+
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent);
+    position: relative;
+  }
+
+  .hero p {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 520px;
+  }
+
+  /* Stats bar */
+  .stats {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 48px;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    animation: fadeUp 0.6s 0.1s ease both;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  .stat-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+  }
+
+  /* Input section */
+  .input-section {
+    margin-bottom: 32px;
+    animation: fadeUp 0.6s 0.2s ease both;
+  }
+
+  .input-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-label::before {
+    content: '//';
+    color: var(--accent);
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,255,136,0.08);
+  }
+
+  textarea::placeholder {
+    color: var(--muted);
+    opacity: 0.5;
+  }
+
+  .char-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 8px;
+  }
+
+  /* Buttons */
+  .actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .btn-primary {
+    flex: 1;
+    padding: 16px 32px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0,255,136,0.3);
+  }
+
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-primary.loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 1s infinite;
+  }
+
+  @keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+
+  .btn-secondary {
+    padding: 16px 20px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--muted);
+    color: var(--text);
+  }
+
+  /* Result section */
+  .result-section {
+    display: none;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .result-section.visible { display: block; }
+
+  /* Score card */
+  .score-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  .score-header {
+    padding: 28px 28px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .score-display {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .score-number {
+    font-size: 64px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -3px;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.5s;
+  }
+
+  .score-max {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    color: var(--muted);
+  }
+
+  .verdict-badge {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+
+  .verdict-clean {
+    color: var(--clean);
+    border-color: var(--clean);
+    background: rgba(0,255,136,0.08);
+  }
+
+  .verdict-uncertain {
+    color: var(--uncertain);
+    border-color: var(--uncertain);
+    background: rgba(255,170,0,0.08);
+  }
+
+  .verdict-flagged {
+    color: var(--flagged);
+    border-color: var(--flagged);
+    background: rgba(255,51,102,0.08);
+  }
+
+  /* Score bar */
+  .score-bar-section {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .score-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1), background 0.5s;
+  }
+
+  .score-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* Signals grid */
+  .signals {
+    padding: 24px 28px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .signal {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+
+  .signal:hover { border-color: var(--muted); }
+
+  .signal-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .signal-value {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .signal-desc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* Signal bar */
+  .signal-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .signal-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Examples */
+  .examples-section {
+    margin-top: 48px;
+    animation: fadeUp 0.6s 0.3s ease both;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-label::before { content: '//'; color: var(--accent3); }
+
+  .examples-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .example-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .example-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .example-card.ai::before { background: var(--flagged); }
+  .example-card.human::before { background: var(--clean); }
+
+  .example-card:hover {
+    border-color: var(--muted);
+    transform: translateY(-2px);
+  }
+
+  .example-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .example-card.ai .example-tag { color: var(--flagged); }
+  .example-card.human .example-tag { color: var(--clean); }
+
+  .example-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Error state */
+  .error-msg {
+    background: rgba(255,51,102,0.08);
+    border: 1px solid rgba(255,51,102,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--flagged);
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .error-msg.visible { display: block; }
+
+  /* API status */
+  .api-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 12px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .status-dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.offline { background: var(--flagged); }
+
+  /* Footer */
+  footer {
+    margin-top: 80px;
+    padding: 32px 0;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 1;
+  }
+
+  .footer-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .footer-text span { color: var(--accent); }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .stats { flex-wrap: wrap; gap: 16px; }
+    .signals { grid-template-columns: 1fr; }
+    .examples-grid { grid-template-columns: 1fr; }
+    .score-number { font-size: 48px; }
+    .header-inner { flex-direction: column; align-items: flex-start; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🛡</div>
+        <div class="logo-text">Slop<span>Shield</span></div>
+      </div>
+      <div class="badge">v1.0 · LOCAL</div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Detect <em>AI slop</em><br>before it spreads.</h1>
+    <p>// Paste any text below. Our classifier analyzes perplexity, burstiness, filler patterns, and vocabulary richness to score it from 0–100.</p>
+  </section>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value">0.995</div>
+      <div class="stat-label">F1 Score</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <div class="stat-value">2,978</div>
+      <div class="stat-label">Slop samples</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <div class="stat-value">3</div>
+      <div class="stat-label">AI models trained on</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <div class="stat-value" id="checks-count">0</div>
+      <div class="stat-label">Checks this session</div>
+    </div>
+  </div>
+
+  <section class="input-section">
+    <div class="input-label">Input text</div>
+    <textarea
+      id="text-input"
+      placeholder="Paste your text here... (minimum 50 characters for accurate results)"
+      oninput="updateCharCount()"
+    ></textarea>
+    <div class="char-count"><span id="char-count">0</span> characters</div>
+
+    <div class="actions">
+      <button class="btn-primary" id="check-btn" onclick="checkText()">
+        Analyze Text
+      </button>
+      <button class="btn-secondary" onclick="clearAll()">Clear</button>
+    </div>
+
+    <div class="api-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Checking API connection...</span>
+    </div>
+  </section>
+
+  <div class="error-msg" id="error-msg"></div>
+
+  <section class="result-section" id="result-section">
+    <div class="score-card">
+      <div class="score-header">
+        <div class="score-display">
+          <div class="score-number" id="score-number">--</div>
+          <div class="score-max">/100</div>
+        </div>
+        <div class="verdict-badge" id="verdict-badge">—</div>
+      </div>
+
+      <div class="score-bar-section">
+        <div class="score-bar-track">
+          <div class="score-bar-fill" id="score-bar"></div>
+        </div>
+        <div class="score-bar-labels">
+          <span>CLEAN</span>
+          <span>UNCERTAIN</span>
+          <span>FLAGGED</span>
+        </div>
+      </div>
+
+      <div class="signals">
+        <div class="signal">
+          <div class="signal-name">Perplexity</div>
+          <div class="signal-value" id="sig-perplexity">—</div>
+          <div class="signal-desc">How predictable is the text? Lower = more AI-like.</div>
+          <div class="signal-bar">
+            <div class="signal-bar-fill" id="bar-perplexity" style="background: var(--accent3);"></div>
+          </div>
+        </div>
+        <div class="signal">
+          <div class="signal-name">Burstiness</div>
+          <div class="signal-value" id="sig-burstiness">—</div>
+          <div class="signal-desc">Sentence rhythm variation. Lower = flat AI cadence.</div>
+          <div class="signal-bar">
+            <div class="signal-bar-fill" id="bar-burstiness" style="background: var(--accent);"></div>
+          </div>
+        </div>
+        <div class="signal">
+          <div class="signal-name">Filler phrases</div>
+          <div class="signal-value" id="sig-filler">—</div>
+          <div class="signal-desc">Count of AI giveaway phrases detected.</div>
+          <div class="signal-bar">
+            <div class="signal-bar-fill" id="bar-filler" style="background: var(--flagged);"></div>
+          </div>
+        </div>
+        <div class="signal">
+          <div class="signal-name">Vocab richness</div>
+          <div class="signal-value" id="sig-vocab">—</div>
+          <div class="signal-desc">Unique words ratio. Higher = more diverse writing.</div>
+          <div class="signal-bar">
+            <div class="signal-bar-fill" id="bar-vocab" style="background: var(--uncertain);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="examples-section">
+    <div class="section-label">Try an example</div>
+    <div class="examples-grid">
+      <div class="example-card ai" onclick="loadExample('ai1')">
+        <div class="example-tag">⚠ AI slop example</div>
+        <div class="example-text">Furthermore, it is important to note that artificial intelligence is transforming industries across the globe. In conclusion, organizations must absolutely embrace these technological changes...</div>
+      </div>
+      <div class="example-card human" onclick="loadExample('human1')">
+        <div class="example-tag">✓ Human writing example</div>
+        <div class="example-text">I grew up in a small town where the library was the only place with air conditioning in summer. I used to go there not to read but just to sit. The librarian got suspicious...</div>
+      </div>
+      <div class="example-card ai" onclick="loadExample('ai2')">
+        <div class="example-tag">⚠ AI slop example</div>
+        <div class="example-text">In today's rapidly evolving digital landscape, it is crucial for businesses to leverage cutting-edge technologies. Moreover, organizations must delve into data-driven strategies...</div>
+      </div>
+      <div class="example-card human" onclick="loadExample('human2')">
+        <div class="example-tag">✓ Human writing example</div>
+        <div class="example-text">My first job paid $7.25 an hour and I thought I was rich. I bought a used guitar and couldn't play it. It sat in the corner of my room for two years before I finally sold it...</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-text">
+      Built by <span>Jothi N</span> · AI Slop Detector Project · 2026
+    </div>
+    <div class="footer-text">
+      Model: <span>Random Forest · F1 0.995</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+const API_URL = 'http://127.0.0.1:5000';
+let checksCount = 0;
+
+const EXAMPLES = {
+  ai1: `Furthermore, it is important to note that artificial intelligence is transforming industries across the globe. In conclusion, organizations must absolutely embrace these technological changes. Moreover, it is crucial to understand that machine learning algorithms are certainly revolutionizing the way businesses operate. That being said, companies should delve into AI adoption strategies. In summary, the paradigm shift brought about by AI will certainly impact all sectors of the economy. It is worth noting that data-driven decision making is becoming increasingly important. To summarize, businesses that fail to adapt will certainly face significant challenges in the years to come.`,
+
+  human1: `I grew up in a small town where the library was the only place with air conditioning in summer. I used to go there not to read but just to sit. The librarian, Mrs. Patel, eventually got suspicious and started handing me books. The first one she gave me was about a boy who trained hawks. I did not care about hawks at all. But I read the whole thing in two days because she was watching me and I did not want to disappoint her. That is probably how I became a reader. Not through any love of books but through social pressure from a retired librarian in a small town.`,
+
+  ai2: `In today's rapidly evolving digital landscape, it is crucial for businesses to leverage cutting-edge technologies. Moreover, organizations must delve into data-driven strategies to remain competitive. It is important to note that cybersecurity has become paramount in this context. Furthermore, companies should absolutely prioritize digital transformation initiatives. In conclusion, the synergy between technology and business strategy will certainly define success in the modern era. That being said, leaders must embrace innovation with an open mindset and certainly commit to continuous learning.`,
+
+  human2: `My first job paid $7.25 an hour and I thought I was rich. I bought a used guitar and couldn't play it. It sat in the corner of my room for two years before I finally sold it to my cousin for forty dollars. He couldn't play it either. Last I heard it's in his attic. I think about that guitar sometimes — not with regret exactly, more like the feeling you get when you see a photo of yourself from years ago and barely recognize the person in it. I was so certain I'd learn. I was certain about a lot of things back then.`
+};
+
+// Check API status on load
+async function checkApiStatus() {
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  try {
+    const resp = await fetch(`${API_URL}/`, { signal: AbortSignal.timeout(3000) });
+    if (resp.ok) {
+      dot.className = 'status-dot online';
+      text.textContent = 'API connected · ready to analyze';
+    } else {
+      throw new Error();
+    }
+  } catch {
+    dot.className = 'status-dot offline';
+    text.textContent = 'API offline · start api.py first';
+  }
+}
+
+function updateCharCount() {
+  const text = document.getElementById('text-input').value;
+  document.getElementById('char-count').textContent = text.length;
+}
+
+function loadExample(key) {
+  document.getElementById('text-input').value = EXAMPLES[key];
+  updateCharCount();
+  document.getElementById('result-section').classList.remove('visible');
+  document.getElementById('error-msg').classList.remove('visible');
+}
+
+function clearAll() {
+  document.getElementById('text-input').value = '';
+  updateCharCount();
+  document.getElementById('result-section').classList.remove('visible');
+  document.getElementById('error-msg').classList.remove('visible');
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('visible');
+}
+
+function getScoreColor(score) {
+  if (score < 45) return 'var(--clean)';
+  if (score < 75) return 'var(--uncertain)';
+  return 'var(--flagged)';
+}
+
+function getVerdictClass(verdict) {
+  if (verdict.includes('CLEAN')) return 'verdict-clean';
+  if (verdict.includes('UNCERTAIN')) return 'verdict-uncertain';
+  return 'verdict-flagged';
+}
+
+async function checkText() {
+  const text = document.getElementById('text-input').value.trim();
+  if (!text) { showError('Please enter some text to analyze.'); return; }
+  if (text.length < 50) { showError('Text too short. Please enter at least 50 characters for accurate results.'); return; }
+
+  const btn = document.getElementById('check-btn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = 'Analyzing...';
+  document.getElementById('error-msg').classList.remove('visible');
+  document.getElementById('result-section').classList.remove('visible');
+
+  try {
+    const resp = await fetch(`${API_URL}/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'API error');
+    }
+
+    const data = await resp.json();
+    displayResult(data);
+    checksCount++;
+    document.getElementById('checks-count').textContent = checksCount;
+
+  } catch (err) {
+    if (err.message.includes('fetch')) {
+      showError('Cannot connect to API. Make sure api.py is running on port 5000.');
+    } else {
+      showError(err.message);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = 'Analyze Text';
+  }
+}
+
+function displayResult(data) {
+  const score = data.slop_score;
+  const verdict = data.verdict;
+  const details = data.details;
+  const color = getScoreColor(score);
+
+  // Score number
+  const scoreEl = document.getElementById('score-number');
+  scoreEl.style.color = color;
+  animateNumber(scoreEl, 0, score, 800);
+
+  // Score bar
+  const bar = document.getElementById('score-bar');
+  bar.style.background = color;
+  setTimeout(() => { bar.style.width = score + '%'; }, 100);
+
+  // Verdict badge
+  const badge = document.getElementById('verdict-badge');
+  badge.textContent = verdict.split('—')[0].trim();
+  badge.className = 'verdict-badge ' + getVerdictClass(verdict);
+
+  // Signals
+  const perp = Math.min(details.perplexity, 500);
+  document.getElementById('sig-perplexity').textContent = details.perplexity.toFixed(1);
+  document.getElementById('bar-perplexity').style.width = Math.min((perp / 500) * 100, 100) + '%';
+
+  document.getElementById('sig-burstiness').textContent = details.burstiness.toFixed(3);
+  document.getElementById('bar-burstiness').style.width = Math.min(details.burstiness * 150, 100) + '%';
+
+  document.getElementById('sig-filler').textContent = details.filler_count;
+  document.getElementById('bar-filler').style.width = Math.min(details.filler_count * 10, 100) + '%';
+
+  document.getElementById('sig-vocab').textContent = details.vocab_richness.toFixed(3);
+  document.getElementById('bar-vocab').style.width = (details.vocab_richness * 100) + '%';
+
+  document.getElementById('result-section').classList.add('visible');
+  document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function animateNumber(el, from, to, duration) {
+  const start = performance.now();
+  function update(time) {
+    const progress = Math.min((time - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(from + (to - from) * ease);
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+// Init
+checkApiStatus();
+</script>
+</body>
+</html>
